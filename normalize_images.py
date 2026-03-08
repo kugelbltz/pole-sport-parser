@@ -1,21 +1,30 @@
+from extract_pdf import EXTRACTED_IMAGES_DIR
+from constants import INPUT_DIR, OUTPUT_DIR
 import re
 import shutil
 import tkinter as tk
 from pathlib import Path
+import logging
 
-from PIL import Image, ImageTk
+from PIL import Image, ImageTk, ImageFilter
 
-INPUT_DIR = Path("out/images")
-OUTPUT_DIR = Path("out/merged")
-OUTPUT_DIR.mkdir(exist_ok=True)
+INPUT_IMAGES_DIR = EXTRACTED_IMAGES_DIR
+NORMALIZED_IMAGE_DIR = OUTPUT_DIR.joinpath("normalized/images")
+
+NORMALIZED_IMAGE_DIR.mkdir(exist_ok=True)
 
 SPLIT_PATTERN = re.compile(
     r"^([A-Za-z]{1,2}\d{1,3})_(\d+)_of_(\d+)\.jpe?g$", re.IGNORECASE
 )
 NORMAL_PATTERN = re.compile(r"^([A-Za-z]{1,2}\d{1,3})\.jpe?g$", re.IGNORECASE)
 
+SIZES = [400, 800]
+BLUR_SIZE = 20
 
-# ---------- Image helpers ----------
+WEBP_QUALITY = 80
+
+logger = logging.getLogger("normalize_images")
+logging.basicConfig(level=logging.INFO)
 
 
 def resize_to_width(img, target_width):
@@ -127,17 +136,61 @@ class ChoiceWindow:
         self.root.destroy()
 
 
-# ---------- Main ----------
+
+def resize_image(img, target_width):
+    w, h = img.size
+    ratio = target_width / w
+    new_height = int(h * ratio)
+
+    return img.resize((target_width, new_height), Image.Resampling.LANCZOS)
+
+
+def save_webp(img, path):
+    img.save(
+        path,
+        "WEBP",
+        quality=WEBP_QUALITY,
+        method=6
+    )
+
+def generate_sizes_from_image(img: Image.Image, element_id: str):
+    for size in SIZES:
+        resized = resize_image(img, size)
+
+        output_path = NORMALIZED_IMAGE_DIR / str(size) / f"{element_id}.webp"
+        save_webp(resized, output_path)
+
+    # blur placeholder
+    blur = img.copy()
+    blur.thumbnail((50, 50))
+    blur = blur.filter(ImageFilter.GaussianBlur(8))
+    blur_path = NORMALIZED_IMAGE_DIR / "blur" / f"{element_id}.webp"
+    save_webp(blur, blur_path)
+
+
+def generate_sizes(image_path: Path):
+    element_id = image_path.stem
+
+    img = Image.open(image_path).convert("RGB")
+
+    generate_sizes_from_image(img, element_id)
+
+def ensure_directories():
+    for size in SIZES:
+        (NORMALIZED_IMAGE_DIR / str(size)).mkdir(parents=True, exist_ok=True)
+
+    (NORMALIZED_IMAGE_DIR / "blur").mkdir(parents=True, exist_ok=True)
+
 
 
 def main():
-    files = list(INPUT_DIR.glob("*.jp*g"))
+    ensure_directories()
 
-    grouped = {}
-    singles = []
+    grouped: dict[str, list[tuple[int, Path]]] = {}
+    singles: list[Path] = []
 
     # Scan files
-    for file in files:
+    for file in EXTRACTED_IMAGES_DIR.iterdir():
         name = file.name
 
         split_match = SPLIT_PATTERN.match(name)
@@ -151,8 +204,8 @@ def main():
 
     # Copy non-split images
     for file in singles:
-        shutil.copy2(file, OUTPUT_DIR / file.name)
-        print(f"Copied {file.name}")
+        logger.info(f"Processing {file.stem}")
+        generate_sizes(file)
 
     # Process split images
     for base, parts in grouped.items():
@@ -170,10 +223,8 @@ def main():
         choice = chooser.choice
 
         result = vertical if choice == "v" else horizontal
-        output_path = OUTPUT_DIR / f"{base}.jpg"
-        result.save(output_path, "JPEG", quality=95)
 
-        print(f"Saved {output_path.name}")
+        generate_sizes_from_image(result, base)
 
         for img in images:
             img.close()
