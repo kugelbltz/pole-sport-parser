@@ -1,34 +1,59 @@
-Les figures vont de la page 26 a la page 100
-
-Sur la page 26 il y a le titre de la section ce qui genere une ligne de plus dans lextraction du tableau
-
-Pour le reste il faut juste supprimer la premiere ligne la premiere colonne et sinon la colonne element qui contient limage nest pas recupérée
-
-flexibility 26-53
-strength 54-75
-spins on static 76-83
-spins on spinning 84-100
-
-comment recuperer l'image ? 
-techniquement j'ai toutes les images numérotees
-je connais la premiere donc je peux associer un index. Il faudra ensuite renommer les images en fonction de lidentifiant de la figure
-
-
-Ensuite pour les criteres, il faut tous les récuperer les types de criteres
-J'en vois pour le moment 5 ou 6 voire 7
-
-- Hold the position
-- Points of contact
-- Grip
-- Arm position
-- Leg position
-- Body position
-- Angle of the split
-
-
-Il y a une particularité:
-- arm position
-- arm position/grip
-- grip
-Je me demande si je ne devrais pas fusionner ces critères ou dupliquer ? 
-Souvent le grip est repeté dans le arm position
+PDF (raw source)
+│
+│  (1) extract_pdf.py
+│  - Extract tables of moves
+│  - Extract raw images (JPG)
+│  - Save intermediate CSV (raw_moves.csv)
+│
+├─> extracted/raw_moves.csv
+│
+│  (2) normalize_moves.py
+│  - Read CSV
+│  - Normalize move codes → `id`
+│  - Normalize categories (enum)
+│  - Normalize technical value (float → int)
+│  - Normalize criteria keys
+│  - Store criteria as list of {type, raw}
+│  - **Add aliases** (manual mapping or derived from name)
+│  - Output canonical JSON per move
+│
+├─> normalized/moves/F1.json
+│     {
+│       "id": "F1",
+│       "name": "Inside Leg Hang 1",
+│       "aliases": ["Inside Leg Hang", "ILH1"],
+│       "technicalValue": 1,
+│       "category": "flexibility",
+│       "page": 26,
+│       "criteria": [
+│         { "type": "hold", "raw": "minimum 2 seconds" },
+│         { "type": "body_position", "raw": "inverted" }
+│       ]
+│     }
+│
+│  (3) optimize_images.py
+│  - Convert JPG → WebP
+│  - Resize / optimize
+│  - Output: normalized/images/F1.webp
+│
+│  (4) build_search_index.py
+│  - Read all canonical JSON
+│  - Generate `searchTokens` for each move:
+│       - name
+│       - aliases
+│       - criteria types
+│  - Generate lightweight index JSON for search
+│
+└─> normalized/moves-index.json
+      [
+        {
+          "id": "F1",
+          "name": "Inside Leg Hang 1",
+          "aliases": ["Inside Leg Hang", "ILH1"],
+          "category": "flexibility",
+          "technicalValue": 1,
+          "criteriaTypes": ["hold", "body_position"],
+          "searchTokens": ["Inside", "Leg", "Hang", "1", "Inside Leg Hang", "ILH1", "hold", "body_position"]
+        },
+        ...
+      ]
